@@ -15,6 +15,9 @@
         gtest
         sqlite
       ];
+      shellHook = ''
+        bear -- make clean all
+      '';
     };
     packages.${system} = {
       my-db = pkgs.stdenv.mkDerivation {
