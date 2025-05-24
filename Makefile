@@ -36,10 +36,10 @@ MSRC = main.c
 ALLSRC = $(MSRC) $(CSRC)
 
 .PHONY: all
-all: main
+all: main.out
 
-.PHONY: main
-main: main.out
+.PHONY: run
+run: main.out
 	@echo "Running $@"
 	@./main.out
 

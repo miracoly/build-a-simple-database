@@ -15,9 +15,21 @@
         gtest
         sqlite
       ];
-      shellHook = ''
-        bear -- make > /dev/null 2>&1
-      '';
+    };
+    packages.${system} = {
+      my-db = pkgs.stdenv.mkDerivation {
+        name = "my-db";
+        src = ./.;
+        buildInputs = [pkgs.gcc pkgs.gnumake];
+        nativeBuildInputs = [];
+        buildPhase = ''
+          make
+        '';
+        installPhase = ''
+          mkdir -p $out/bin
+          cp main.out $out/bin/my-db
+        '';
+      };
     };
   };
 }
