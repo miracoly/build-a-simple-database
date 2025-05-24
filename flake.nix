@@ -30,6 +30,18 @@
           cp main.out $out/bin/my-db
         '';
       };
+      tests = pkgs.stdenv.mkDerivation {
+        name = "tests";
+        src = ./.;
+        buildInputs = with pkgs; [gcc gnumake gtest];
+        buildPhase = ''
+          make test.out
+        '';
+        installPhase = ''
+          mkdir -p $out/bin
+          cp test.out $out/bin/tests
+        '';
+      };
     };
   };
 }
