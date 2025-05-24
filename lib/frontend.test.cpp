@@ -1,4 +1,4 @@
-#include "input.h"
+#include "frontend.h"
 #include <gtest/gtest.h>
 
 TEST(NewInputBufferTest, InitializesFieldsToZeroOrNull) {
