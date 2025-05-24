@@ -30,8 +30,8 @@ CXXFLAGS += -Werror
 CXXFLAGS += -Wmissing-declarations
 
 # Sources
-TSRC = $(wildcard ./lib/*.test.cpp)
-CSRC= $(wildcard ./lib/*.c)
+TSRC = $(wildcard ./lib/*/*.test.cpp)
+CSRC= $(wildcard ./lib/*/*.c)
 MSRC = main.c
 ALLSRC = $(MSRC) $(CSRC)
 

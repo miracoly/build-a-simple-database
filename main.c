@@ -4,24 +4,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "lib/inputbuffer.h"
-
-static inline void print_prompt() {
-  printf("db > ");
-}
-
-static void read_input(InputBuffer* input_buffer) {
-  __ssize_t bytes_read =
-      getline(&(input_buffer->buffer), &(input_buffer->buffer_length), stdin);
-
-  if (bytes_read <= 0) {
-    printf("Error reading input\n");
-    exit(EXIT_FAILURE);
-  }
-
-  input_buffer->input_length = bytes_read - 1;
-  input_buffer->buffer[bytes_read - 1] = '\0';
-}
+#include "lib/input/input.h"
 
 int main(void) {
   InputBuffer* input_buffer = new_input_buffer();
