@@ -1,5 +1,5 @@
-#ifndef INPUT_BUFFER_H
-#define INPUT_BUFFER_H
+#ifndef DB_FRONTEND_H
+#define DB_FRONTEND_H
 
 #include <stdint.h>
 #include <stdlib.h>
@@ -51,4 +51,14 @@ PrepareResult prepare_statement(InputBuffer* input_buffer,
 
 MetaCommandResult do_meta_command(InputBuffer* input_buffer);
 
-#endif /* INPUT_BUFFER_H */
+#define size_of_attributes(Struct, Attribute) sizeof(((Struct*)0)->Attribute)
+
+const uint32_t ID_SIZE = size_of_attributes(Row, id);
+const uint32_t USERNAME_SIZE = size_of_attributes(Row, username);
+const uint32_t EMAIL_SIZE = size_of_attributes(Row, email);
+const uint32_t ID_OFFSET = 0;
+const uint32_t USERNAME_OFFSET = ID_OFFSET + ID_SIZE;
+const uint32_t EMAIL_OFFSET = USERNAME_OFFSET + USERNAME_SIZE;
+const uint32_t ROW_SIZE = ID_SIZE + USERNAME_SIZE + EMAIL_SIZE;
+
+#endif /* DB_FRONTEND_H */
