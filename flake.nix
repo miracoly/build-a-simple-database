@@ -21,6 +21,7 @@
           gcc
           gnumake
           gtest
+          rubyPackages.rspec
           sqlite
         ];
         shellHook = ''
@@ -31,6 +32,22 @@
         runBearMake = {
           type = "app";
           program = "${runBearMake}";
+        };
+        runTests = {
+          type = "app";
+          program = "${pkgs.writeShellApplication {
+            name = "mydb-tests";
+            runtimeInputs = with pkgs; [
+              gcc
+              gnumake
+              rubyPackages.rspec
+            ];
+            text = ''
+              set -euo pipefail
+              make
+              exec rspec ./*.rb
+            '';
+          }}/bin/mydb-tests";
         };
       };
       packages = {
