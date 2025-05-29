@@ -34,8 +34,8 @@
         };
       };
       packages = {
-        my-db = pkgs.stdenv.mkDerivation {
-          name = "my-db";
+        mydb = pkgs.stdenv.mkDerivation {
+          name = "mydb";
           src = ./.;
           buildInputs = [pkgs.gcc pkgs.gnumake];
           nativeBuildInputs = [];
@@ -44,19 +44,7 @@
           '';
           installPhase = ''
             mkdir -p $out/bin
-            cp main.out $out/bin/my-db
-          '';
-        };
-        tests = pkgs.stdenv.mkDerivation {
-          name = "tests";
-          src = ./.;
-          buildInputs = with pkgs; [gcc gnumake gtest];
-          buildPhase = ''
-            make test.out
-          '';
-          installPhase = ''
-            mkdir -p $out/bin
-            cp test.out $out/bin/tests
+            cp mydb.out $out/bin/mydb
           '';
         };
       };

@@ -10,51 +10,19 @@ CFLAGS += -Wall
 CFLAGS += -Wextra
 CFLAGS += -pedantic
 CFLAGS += -Werror
-CFLAGS += -Wmissing-declarations
-
-TLIBS =  -lgtest
-TLIBS += -lgtest_main
-TLIBS += -pthread
-
-###
-CXXFLAGS = -std=c++23
-CXXFLAGS += -ggdb
-CXXFLAGS += -Wall
-CXXFLAGS += -Weffc++
-CXXFLAGS += -Wextra
-# CXXFLAGS += -Wconversion
-# CXXFLAGS += -Wsign-conversion
-CXXFLAGS += -pedantic
-CXXFLAGS += -pedantic-errors
-CXXFLAGS += -Werror
-CXXFLAGS += -Wmissing-declarations
-
-# Sources
-TSRC = $(wildcard ./lib/*.test.cpp)
-CSRC= $(wildcard ./lib/*.c)
-MSRC = main.c
-ALLSRC = $(MSRC) $(CSRC)
+# CFLAGS += -Wmissing-declarations
 
 .PHONY: all
-all: main.out
+all: mydb.out
 
 .PHONY: run
-run: main.out
+run: mydb.out
 	@echo "Running $@"
-	@./main.out
+	@./mydb.out
 
-main.out: main.c $(CSRC)
+mydb.out: mydb.c
 	@echo Compiling $@
-	@$(CC) $(CFLAGS) main.c  $(CSRC) -o main.out $(LIBS)
-
-.PHONY: test
-test: test.out
-	@echo "Running tests"
-	@./test.out
-
-test.out: $(TSRC) $(CSRC)
-	@echo Compiling tests: $@
-	@$(CXX) $(CXXFLAGS) $(TSRC) $(CSRC) -o $@ $(TLIBS) $(LIBS) 
+	@$(CC) $(CFLAGS) mydb.c -o mydb.out $(LIBS)
 
 .PHONY: clean
 clean:
