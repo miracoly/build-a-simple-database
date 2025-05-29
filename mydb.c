@@ -1,5 +1,6 @@
 #define _POSIX_C_SOURCE 200809L
 
+#include <assert.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -62,13 +63,66 @@ typedef struct {
   char email[COLUMN_EMAIL_SIZE];
 } Row;
 
+void print_row(const Row* row) {
+  printf("(%d, %s, %s)\n", row->id, row->username, row->email);
+}
+
 typedef struct {
   StatementType type;
   Row row_to_insert;
 } Statement;
 
-MetaCommandResult do_meta_command(InputBuffer* input_buffer) {
+#define size_of_attributes(Struct, Attribute) sizeof(((Struct*)0)->Attribute)
+
+const uint32_t ID_SIZE = size_of_attributes(Row, id);
+const uint32_t USERNAME_SIZE = size_of_attributes(Row, username);
+const uint32_t EMAIL_SIZE = size_of_attributes(Row, email);
+const uint32_t ID_OFFSET = 0;
+const uint32_t USERNAME_OFFSET = ID_OFFSET + ID_SIZE;
+const uint32_t EMAIL_OFFSET = USERNAME_OFFSET + USERNAME_SIZE;
+const uint32_t ROW_SIZE = ID_SIZE + USERNAME_SIZE + EMAIL_SIZE;
+
+void seriallize_row(const Row* source, void* destination) {
+  memcpy((char*)destination + ID_OFFSET, &(source->id), ID_SIZE);
+  memcpy((char*)destination + USERNAME_OFFSET, &(source->username),
+         USERNAME_SIZE);
+  memcpy((char*)destination + EMAIL_OFFSET, &(source->email), EMAIL_SIZE);
+}
+
+void deserialize_row(void* source, Row* destination) {
+  memcpy(&(destination->id), (char*)source + ID_OFFSET, ID_SIZE);
+  memcpy(&(destination->username), (char*)source + USERNAME_OFFSET,
+         USERNAME_SIZE);
+  memcpy(&(destination->email), (char*)source + EMAIL_OFFSET, EMAIL_SIZE);
+}
+
+#define TABLE_MAX_PAGES 100
+const uint32_t PAGE_SIZE = 4096;
+const uint32_t ROWS_PER_PAGE = PAGE_SIZE / ROW_SIZE;
+const uint32_t TABLE_MAX_ROWS = ROWS_PER_PAGE * TABLE_MAX_PAGES;
+
+typedef struct {
+  uint32_t num_rows;
+  void* pages[TABLE_MAX_PAGES];
+} Table;
+
+Table* new_table() {
+  Table* table = (Table*)calloc(1, sizeof(Table));
+  table->num_rows = 0;
+  return table;
+}
+
+void free_table(Table* table) {
+  for (size_t i = 0; i < TABLE_MAX_PAGES && table->pages[i]; i++) {
+    free(table->pages[i]);
+  }
+  free(table);
+}
+
+MetaCommandResult do_meta_command(InputBuffer* input_buffer, Table* table) {
   if (strncmp(input_buffer->buffer, ".exit", input_buffer->input_length) == 0) {
+    close_input_buffer(input_buffer);
+    free_table(table);
     exit(EXIT_SUCCESS);
   } else {
     return META_COMMAND_UNRECOGNIZED_COMMAND;
@@ -89,35 +143,60 @@ PrepareResult prepare_statement(InputBuffer* input_buffer,
   } else return PREPARE_UNRECOGNIZED_STATEMENT;
 }
 
-#define size_of_attributes(Struct, Attribute) sizeof(((Struct*)0)->Attribute)
+void* row_slot(Table* table, uint32_t row_num) {
+  uint32_t page_num = row_num / ROWS_PER_PAGE;
+  void* page = table->pages[page_num];
+  if (page == NULL) {
+    page = table->pages[page_num] = malloc(PAGE_SIZE);
+  }
+  uint32_t row_offset = row_num % ROWS_PER_PAGE;
+  uint32_t byte_offset = row_offset * ROW_SIZE;
+  return (char*)page + byte_offset;
+}
 
-const uint32_t ID_SIZE = size_of_attributes(Row, id);
-const uint32_t USERNAME_SIZE = size_of_attributes(Row, username);
-const uint32_t EMAIL_SIZE = size_of_attributes(Row, email);
-const uint32_t ID_OFFSET = 0;
-const uint32_t USERNAME_OFFSET = ID_OFFSET + ID_SIZE;
-const uint32_t EMAIL_OFFSET = USERNAME_OFFSET + USERNAME_SIZE;
-const uint32_t ROW_SIZE = ID_SIZE + USERNAME_SIZE + EMAIL_SIZE;
+typedef enum {
+  EXECUTE_SUCCESS,
+  EXECUTE_TABLE_FULL,
+} ExecuteResult;
 
-static void execute_statement(Statement* statement) {
+ExecuteResult execute_insert(const Statement* statement, Table* table) {
+  if (table->num_rows >= TABLE_MAX_ROWS) return EXECUTE_TABLE_FULL;
+
+  const Row* row_to_insert = &(statement->row_to_insert);
+  seriallize_row(row_to_insert, row_slot(table, table->num_rows));
+  table->num_rows += 1;
+  return EXECUTE_SUCCESS;
+}
+
+ExecuteResult execute_select(Table* table) {
+  Row row;
+  for (uint32_t i = 0; i < table->num_rows; i++) {
+    deserialize_row(row_slot(table, i), &row);
+    print_row(&row);
+  }
+  return EXECUTE_SUCCESS;
+}
+
+ExecuteResult execute_statement(const Statement* statement, Table* table) {
   switch (statement->type) {
     case STATEMENT_INSERT:
-      printf("Insert TODO\n");
-      break;
+      return execute_insert(statement, table);
     case STATEMENT_SELECT:
-      printf("Select TODO\n");
-      break;
-  }
+      return execute_select(table);
+  };
+  assert(0 && "Unreachable code reached in execute_statement");
+  return EXECUTE_SUCCESS;
 }
 
 int main(void) {
+  Table* table = new_table();
   InputBuffer* input_buffer = new_input_buffer();
   while (true) {
     print_prompt();
     read_input(input_buffer);
 
     if (input_buffer->buffer[0] == '.') {
-      switch (do_meta_command(input_buffer)) {
+      switch (do_meta_command(input_buffer, table)) {
         case (META_COMMAND_SUCCESS):
           continue;
         case (META_COMMAND_UNRECOGNIZED_COMMAND):
@@ -139,8 +218,14 @@ int main(void) {
         continue;
     }
 
-    execute_statement(&statement);
-    printf("Executed.\n");
+    switch (execute_statement(&statement, table)) {
+      case (EXECUTE_SUCCESS):
+        printf("Executed.\n");
+        break;
+      case (EXECUTE_TABLE_FULL):
+        printf("Error: Table full.\n");
+        break;
+    };
   }
 
   return 0;
