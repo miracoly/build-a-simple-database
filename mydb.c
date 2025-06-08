@@ -14,33 +14,6 @@ typedef struct {
   ssize_t input_length;
 } InputBuffer;
 
-InputBuffer* new_input_buffer() {
-  InputBuffer* input_buffer = (InputBuffer*)calloc(1, sizeof(InputBuffer));
-  return input_buffer;
-}
-
-void close_input_buffer(InputBuffer* input_buffer) {
-  free(input_buffer->buffer);
-  free(input_buffer);
-}
-
-void print_prompt() {
-  printf("db > ");
-}
-
-void read_input(InputBuffer* input_buffer) {
-  ssize_t bytes_read =
-      getline(&(input_buffer->buffer), &(input_buffer->buffer_length), stdin);
-
-  if (bytes_read <= 0) {
-    printf("Error reading input\n");
-    exit(EXIT_FAILURE);
-  }
-
-  input_buffer->input_length = bytes_read - 1;
-  input_buffer->buffer[bytes_read - 1] = '\0';
-}
-
 typedef enum {
   META_COMMAND_SUCCESS,
   META_COMMAND_UNRECOGNIZED_COMMAND
@@ -65,10 +38,6 @@ typedef struct {
   char email[COLUMN_EMAIL_SIZE + 1];
 } Row;
 
-void print_row(const Row* row) {
-  printf("(%d, %s, %s)\n", row->id, row->username, row->email);
-}
-
 typedef struct {
   StatementType type;
   Row row_to_insert;
@@ -76,52 +45,110 @@ typedef struct {
 
 #define size_of_attributes(Struct, Attribute) sizeof(((Struct*)0)->Attribute)
 
-const uint32_t ID_SIZE = size_of_attributes(Row, id);
-const uint32_t USERNAME_SIZE = size_of_attributes(Row, username);
-const uint32_t EMAIL_SIZE = size_of_attributes(Row, email);
-const uint32_t ID_OFFSET = 0;
-const uint32_t USERNAME_OFFSET = ID_OFFSET + ID_SIZE;
-const uint32_t EMAIL_OFFSET = USERNAME_OFFSET + USERNAME_SIZE;
-const uint32_t ROW_SIZE = ID_SIZE + USERNAME_SIZE + EMAIL_SIZE;
-
-void seriallize_row(const Row* source, void* destination) {
-  memcpy((char*)destination + ID_OFFSET, &(source->id), ID_SIZE);
-  memcpy((char*)destination + USERNAME_OFFSET, &(source->username),
-         USERNAME_SIZE);
-  memcpy((char*)destination + EMAIL_OFFSET, &(source->email), EMAIL_SIZE);
-}
-
-void deserialize_row(void* source, Row* destination) {
-  memcpy(&(destination->id), (char*)source + ID_OFFSET, ID_SIZE);
-  memcpy(&(destination->username), (char*)source + USERNAME_OFFSET,
-         USERNAME_SIZE);
-  memcpy(&(destination->email), (char*)source + EMAIL_OFFSET, EMAIL_SIZE);
-}
+static const uint32_t ID_SIZE = size_of_attributes(Row, id);
+static const uint32_t USERNAME_SIZE = size_of_attributes(Row, username);
+static const uint32_t EMAIL_SIZE = size_of_attributes(Row, email);
+static const uint32_t ID_OFFSET = 0;
+static const uint32_t USERNAME_OFFSET = ID_OFFSET + ID_SIZE;
+static const uint32_t EMAIL_OFFSET = USERNAME_OFFSET + USERNAME_SIZE;
+static const uint32_t ROW_SIZE = ID_SIZE + USERNAME_SIZE + EMAIL_SIZE;
 
 #define TABLE_MAX_PAGES 100
-const uint32_t PAGE_SIZE = 4096;
-const uint32_t ROWS_PER_PAGE = PAGE_SIZE / ROW_SIZE;
-const uint32_t TABLE_MAX_ROWS = ROWS_PER_PAGE * TABLE_MAX_PAGES;
+static const uint32_t PAGE_SIZE = 4096;
+static const uint32_t ROWS_PER_PAGE = PAGE_SIZE / ROW_SIZE;
+static const uint32_t TABLE_MAX_ROWS = ROWS_PER_PAGE * TABLE_MAX_PAGES;
 
 typedef struct {
   uint32_t num_rows;
   void* pages[TABLE_MAX_PAGES];
 } Table;
 
-Table* new_table() {
+typedef enum {
+  EXECUTE_SUCCESS,
+  EXECUTE_TABLE_FULL,
+} ExecuteResult;
+
+static InputBuffer* new_input_buffer();
+static void close_input_buffer(InputBuffer* input_buffer);
+static void print_prompt();
+static void read_input(InputBuffer* input_buffer);
+static void print_row(const Row* row);
+static void seriallize_row(const Row* source, void* destination);
+static void deserialize_row(void* source, Row* destination);
+static Table* new_table();
+static void free_table(Table* table);
+static MetaCommandResult do_meta_command(InputBuffer* input_buffer,
+                                         Table* table);
+static PrepareResult prepare_insert(InputBuffer* input_buffer,
+                                    Statement* statement);
+static PrepareResult prepare_statement(InputBuffer* input_buffer,
+                                       Statement* statement);
+static void* row_slot(Table* table, uint32_t row_num);
+static ExecuteResult execute_insert(const Statement* statement, Table* table);
+static ExecuteResult execute_select(Table* table);
+static ExecuteResult execute_statement(const Statement* statement,
+                                       Table* table);
+
+static InputBuffer* new_input_buffer() {
+  InputBuffer* input_buffer = (InputBuffer*)calloc(1, sizeof(InputBuffer));
+  return input_buffer;
+}
+
+static void close_input_buffer(InputBuffer* input_buffer) {
+  free(input_buffer->buffer);
+  free(input_buffer);
+}
+
+static void print_prompt() {
+  printf("db > ");
+}
+
+static void read_input(InputBuffer* input_buffer) {
+  ssize_t bytes_read =
+      getline(&(input_buffer->buffer), &(input_buffer->buffer_length), stdin);
+
+  if (bytes_read <= 0) {
+    printf("Error reading input\n");
+    exit(EXIT_FAILURE);
+  }
+
+  input_buffer->input_length = bytes_read - 1;
+  input_buffer->buffer[bytes_read - 1] = '\0';
+}
+
+static void print_row(const Row* row) {
+  printf("(%d, %s, %s)\n", row->id, row->username, row->email);
+}
+
+static void seriallize_row(const Row* source, void* destination) {
+  memcpy((char*)destination + ID_OFFSET, &(source->id), ID_SIZE);
+  memcpy((char*)destination + USERNAME_OFFSET, &(source->username),
+         USERNAME_SIZE);
+  memcpy((char*)destination + EMAIL_OFFSET, &(source->email), EMAIL_SIZE);
+}
+
+static void deserialize_row(void* source, Row* destination) {
+  memcpy(&(destination->id), (char*)source + ID_OFFSET, ID_SIZE);
+  memcpy(&(destination->username), (char*)source + USERNAME_OFFSET,
+         USERNAME_SIZE);
+  memcpy(&(destination->email), (char*)source + EMAIL_OFFSET, EMAIL_SIZE);
+}
+
+static Table* new_table() {
   Table* table = (Table*)calloc(1, sizeof(Table));
   table->num_rows = 0;
   return table;
 }
 
-void free_table(Table* table) {
+static void free_table(Table* table) {
   for (size_t i = 0; i < TABLE_MAX_PAGES && table->pages[i]; i++) {
     free(table->pages[i]);
   }
   free(table);
 }
 
-MetaCommandResult do_meta_command(InputBuffer* input_buffer, Table* table) {
+static MetaCommandResult do_meta_command(InputBuffer* input_buffer,
+                                         Table* table) {
   if (strncmp(input_buffer->buffer, ".exit", input_buffer->input_length) == 0) {
     close_input_buffer(input_buffer);
     free_table(table);
@@ -131,7 +158,8 @@ MetaCommandResult do_meta_command(InputBuffer* input_buffer, Table* table) {
   }
 }
 
-PrepareResult prepare_insert(InputBuffer* input_buffer, Statement* statement) {
+static PrepareResult prepare_insert(InputBuffer* input_buffer,
+                                    Statement* statement) {
   statement->type = STATEMENT_INSERT;
   strtok(input_buffer->buffer, " ");  // keyword
   char* id_string = strtok(NULL, " ");
@@ -153,8 +181,8 @@ PrepareResult prepare_insert(InputBuffer* input_buffer, Statement* statement) {
   return PREPARE_SUCCESS;
 }
 
-PrepareResult prepare_statement(InputBuffer* input_buffer,
-                                Statement* statement) {
+static PrepareResult prepare_statement(InputBuffer* input_buffer,
+                                       Statement* statement) {
   if (strncmp(input_buffer->buffer, "insert", 6) == 0) {
     return prepare_insert(input_buffer, statement);
   } else if (strncmp(input_buffer->buffer, "select", 6) == 0) {
@@ -163,7 +191,7 @@ PrepareResult prepare_statement(InputBuffer* input_buffer,
   } else return PREPARE_UNRECOGNIZED_STATEMENT;
 }
 
-void* row_slot(Table* table, uint32_t row_num) {
+static void* row_slot(Table* table, uint32_t row_num) {
   uint32_t page_num = row_num / ROWS_PER_PAGE;
   void* page = table->pages[page_num];
   if (page == NULL) {
@@ -174,12 +202,7 @@ void* row_slot(Table* table, uint32_t row_num) {
   return (char*)page + byte_offset;
 }
 
-typedef enum {
-  EXECUTE_SUCCESS,
-  EXECUTE_TABLE_FULL,
-} ExecuteResult;
-
-ExecuteResult execute_insert(const Statement* statement, Table* table) {
+static ExecuteResult execute_insert(const Statement* statement, Table* table) {
   if (table->num_rows >= TABLE_MAX_ROWS) return EXECUTE_TABLE_FULL;
 
   const Row* row_to_insert = &(statement->row_to_insert);
@@ -188,7 +211,7 @@ ExecuteResult execute_insert(const Statement* statement, Table* table) {
   return EXECUTE_SUCCESS;
 }
 
-ExecuteResult execute_select(Table* table) {
+static ExecuteResult execute_select(Table* table) {
   Row row;
   for (uint32_t i = 0; i < table->num_rows; i++) {
     deserialize_row(row_slot(table, i), &row);
@@ -197,7 +220,8 @@ ExecuteResult execute_select(Table* table) {
   return EXECUTE_SUCCESS;
 }
 
-ExecuteResult execute_statement(const Statement* statement, Table* table) {
+static ExecuteResult execute_statement(const Statement* statement,
+                                       Table* table) {
   switch (statement->type) {
     case STATEMENT_INSERT:
       return execute_insert(statement, table);
