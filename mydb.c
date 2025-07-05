@@ -76,6 +76,14 @@ typedef struct {
   uint32_t num_rows;
 } Table;
 
+typedef struct {
+  Table* table;
+  uint32_t row_num;
+  bool end_of_table;
+} Cursor;
+
+/* function declarations */
+
 static InputBuffer* new_input_buffer();
 static void close_input_buffer(InputBuffer* input_buffer);
 static void print_prompt();
@@ -89,7 +97,7 @@ static PrepareResult prepare_insert(InputBuffer* input_buffer,
                                     Statement* statement);
 static PrepareResult prepare_statement(InputBuffer* input_buffer,
                                        Statement* statement);
-static void* row_slot(Table* table, uint32_t row_num);
+static void* cursor_value(Cursor* cursor);
 static ExecuteResult execute_insert(const Statement* statement, Table* table);
 static ExecuteResult execute_select(Table* table);
 static ExecuteResult execute_statement(const Statement* statement,
@@ -99,6 +107,9 @@ static void db_close(Table* table);
 static Pager* pager_open(const char* filename);
 static void* get_page(Pager* pager, uint32_t page_num);
 static void pager_flush(Pager* pager, uint32_t page_num, uint32_t size);
+static Cursor* table_start(Table* table);
+static Cursor* table_end(Table* table);
+static void cursor_advance(Cursor* cursor);
 
 static InputBuffer* new_input_buffer() {
   InputBuffer* input_buffer = (InputBuffer*)calloc(1, sizeof(InputBuffer));
@@ -305,29 +316,63 @@ static PrepareResult prepare_statement(InputBuffer* input_buffer,
   } else return PREPARE_UNRECOGNIZED_STATEMENT;
 }
 
-static void* row_slot(Table* table, uint32_t row_num) {
+static void* cursor_value(Cursor* cursor) {
+  uint32_t row_num = cursor->row_num;
   uint32_t page_num = row_num / ROWS_PER_PAGE;
-  void* page = get_page(table->pager, page_num);
+  void* page = get_page(cursor->table->pager, page_num);
   uint32_t row_offset = row_num % ROWS_PER_PAGE;
   uint32_t byte_offset = row_offset * ROW_SIZE;
   return (char*)page + byte_offset;
+}
+
+static Cursor* table_start(Table* table) {
+  Cursor* cursor = malloc(sizeof(Cursor));
+  cursor->table = table;
+  cursor->row_num = 0;
+  cursor->end_of_table = table->num_rows == 0;
+  return cursor;
+}
+
+static Cursor* table_end(Table* table) {
+  Cursor* cursor = malloc(sizeof(Cursor));
+  cursor->table = table;
+  cursor->row_num = table->num_rows;
+  cursor->end_of_table = true;
+  return cursor;
+}
+
+static void cursor_advance(Cursor* cursor) {
+  cursor->row_num++;
+  if (cursor->row_num >= cursor->table->num_rows) {
+    cursor->end_of_table = true;
+  }
 }
 
 static ExecuteResult execute_insert(const Statement* statement, Table* table) {
   if (table->num_rows >= TABLE_MAX_ROWS) return EXECUTE_TABLE_FULL;
 
   const Row* row_to_insert = &(statement->row_to_insert);
-  seriallize_row(row_to_insert, row_slot(table, table->num_rows));
+  Cursor* cursor = table_end(table);
+
+  seriallize_row(row_to_insert, cursor_value(cursor));
   table->num_rows += 1;
+  free(cursor);
+
   return EXECUTE_SUCCESS;
 }
 
 static ExecuteResult execute_select(Table* table) {
+  Cursor* cursor = table_start(table);
   Row row;
-  for (uint32_t i = 0; i < table->num_rows; i++) {
-    deserialize_row(row_slot(table, i), &row);
+
+  while (!(cursor->end_of_table)) {
+    deserialize_row(cursor_value(cursor), &row);
     print_row(&row);
+    cursor_advance(cursor);
   }
+
+  free(cursor);
+
   return EXECUTE_SUCCESS;
 }
 
